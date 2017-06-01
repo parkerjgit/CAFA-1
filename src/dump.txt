@@ -1,0 +1,1436 @@
+Option Explicit
+'------------------------------------------------------------------------------
+'Subroutine: ArrayPointsOnSurface
+' Purpose:    Creates an array of points on a surface.
+'------------------------------------------------------------------------------
+
+'Call ArrayPtsOnTrimSrf()
+
+Sub ArrayPointsOnSurface()
+
+	Dim strObject, nRows, nColumns
+	Dim U, V, i, j, arrParam(1), arrPoint
+
+	' Get the surface object
+	strObject = Rhino.GetObject("Select surface", 8)
+
+	If IsNull(strObject) Then Exit Sub
+	
+	' Get the number of rows
+	nRows = Rhino.GetInteger("Number of rows", 2, 2)
+
+	If IsNull(nRows) Then Exit Sub
+	
+	nRows = nRows - 1
+	' Get the number of columns
+	nColumns = Rhino.GetInteger("Number of columns", 2, 2)
+
+	If IsNull(nColumns) Then Exit Sub
+
+	nColumns = nColumns - 1
+
+	' Get the domain of the surface
+	U = Rhino.SurfaceDomain(strObject, 0)
+	V = Rhino.SurfaceDomain(strObject, 1)
+
+	If Not IsArray(U) Or Not IsArray(V) Then Exit Sub
+
+	' Add the points
+	For i = 0 To nRows
+		arrParam(0) = U(0) + (((U(1) - U(0)) / nRows) * i)
+		For j = 0 To nColumns
+			arrParam(1) = V(0) + (((V(1) - V(0)) / nColumns) * j)
+			arrPoint = Rhino.EvaluateSurface(strObject, arrParam)
+			If IsArray(arrPoint) Then Rhino.AddPoint arrPoint
+		Next
+	Next
+End Sub
+
+Sub WhoFramedTheSurface()
+	Dim idSurface : idSurface = Rhino.GetObject("Surface to frame", 8, True, True)
+	If IsNull(idSurface) Then Exit Sub
+	Dim intCount : intCount = Rhino.GetInteger("Number of iterations per direction", 20, 2)
+	If IsNull(intCount) Then Exit Sub
+	Dim uDomain : uDomain = Rhino.SurfaceDomain(idSurface, 0)
+	Dim vDomain : vDomain = Rhino.SurfaceDomain(idSurface, 1)
+	Dim uStep : uStep = (uDomain(1) - uDomain(0)) / intCount
+	Dim vStep : vStep = (vDomain(1) - vDomain(0)) / intCount
+	Dim u, v
+	Dim pt
+	Dim srfFrame
+	Call Rhino.EnableRedraw(False)
+	For u = uDomain(0) To uDomain(1) Step uStep
+		For v = vdomain(0) To vDomain(1) Step vStep
+			pt = Rhino.EvaluateSurface(idSurface, Array(u, v))
+			If Rhino.Distance(pt, Rhino.BrepClosestPoint(idSurface, pt)(0)) < 0.1 Then
+				srfFrame = Rhino.SurfaceFrame(idSurface, Array(u, v))
+				Call Rhino.AddPlaneSurface(srfFrame, 1.0, 1.0)
+			End If
+		Next
+	Next
+	Call Rhino.EnableRedraw(True)
+End Sub
+
+Call test()
+Sub test()
+	Dim idSurface : idSurface = Rhino.GetObject("Surface to frame", 8, True, True)
+	If IsNull(idSurface) Then Exit Sub
+	Dim intSpc : intSpc = Rhino.GetInteger("Enter Grid Spacing", 5, 1)
+	If IsNull(intSpc) Then Exit Sub
+
+	Dim arrPts : arrPts = ArrayPtsOnTrimmedSrf(idSurface, intSpc)
+	Dim dblStep : dblStep = 2.6
+	Call SnapPtsToLevels(arrPts, dblStep)
+	
+End Sub
+
+Function ArrayPtsOnTrimmedSrf(idSurface, intSpc)
+	
+	Dim arrPts()
+	
+	'Dim idSurface : idSurface = Rhino.GetObject("Surface to frame", 8, True, True)
+	If IsNull(idSurface) Then Exit Function
+	'Dim intSpc : intSpc = Rhino.GetInteger("Enter Grid Spacing", 5, 1)
+	If IsNull(intSpc) Then Exit Function
+	
+	Dim uDomain : uDomain = Rhino.SurfaceDomain(idSurface, 0)
+	Dim vDomain : vDomain = Rhino.SurfaceDomain(idSurface, 1)
+	'Dim uStep : uStep = (uDomain(1) - uDomain(0)) / intSpc
+	'Dim vStep : vStep = (vDomain(1) - vDomain(0)) / intSpc
+	
+	Dim u, v
+	Dim j : j=0
+	Dim pt
+	Dim srfFrame
+	Call Rhino.EnableRedraw(False)
+	For u = uDomain(0) To uDomain(1) Step intSpc
+		For v = vdomain(0) To vDomain(1) Step intSpc
+			pt = Rhino.EvaluateSurface(idSurface, Array(u, v))
+			'if pt is not on part of srf that is trimmed away, then add pt
+			If Rhino.Distance(pt, Rhino.BrepClosestPoint(idSurface, pt)(0)) < 0.1 Then
+				'add pt
+				ReDim Preserve arrPts(j)
+				'arrPts(j) = pt
+				arrPts(j) = Rhino.AddPoint(pt)
+				j=j+1
+			End If
+		Next
+	Next
+	Call Rhino.EnableRedraw(True)
+	
+	ArrayPtsOnTrimmedSrf = arrPts
+	
+End Function
+
+'doesn't work with fractioons
+Function SnapPtsToLevels(arrPts, dblStep)
+	
+	If IsNull(arrPts) Then Exit Function
+	If IsNull(dblStep) Then Exit Function
+	
+	Dim i, pt, idPt, intN
+	For i=0 To Ubound(arrPts)
+		'get pt ref
+		idPt = arrPts(i)
+		'get pt coords
+		pt =  Rhino.PointCoordinates(idPt)
+		'snap down
+		intN = Int(pt(2)/dblStep)
+		pt(2) = intN * dblStep
+		
+		'if remainder <= half step size then round down, else up
+		'If pt(2) Mod dblStep <= dblStep/2 Then
+		'	intN = Int(pt(2)/dblStep)
+		'	pt(2) = intN * dblStep
+		'ElseIf pt(2) Mod dblStep > dblStep/2 Then
+		'	intN = Int(pt(2)/dblStep)
+		'	pt(2) = intN * dblStep
+		'Else
+		'	Rhino.Print "oops, pt(2) Mod dblStep = " + pt(2) Mod dblStep
+		'	Exit Function
+		'End If
+		
+		'move pt obj
+		Call Rhino.PointCoordinates(idPt, pt)
+	Next
+End Function
+Option Explicit
+'Script written by Josh Parker
+'Script copyrighted by OPEN Architecture
+'Script version Tuesday, February 15, 2011 3:25:36 AM
+
+Class Cell
+	
+	Public m_intType
+	Public m_strPt
+	
+	'array of neighbors
+	Public m_arrNeighbors
+	Public m_arrVonNeumanns
+	
+	'moore subsets
+	Public m_arrType0Ms
+	Public m_arrType1Ms
+	Public m_arrType2Ms
+	
+	'vonneumann subsets
+	Public m_arrType0VNs
+	Public m_arrType1VNs
+	Public m_arrType2VNs
+	
+	'neighbor pointers
+	Public m_objNorth
+	Public m_objSouth
+	Public m_objEast
+	Public m_objWest
+	Public m_objTop
+	Public m_objBottom
+	
+	'is cell part of snake
+	Public m_boolIsOpen
+	
+	
+	Private Sub Class_Initialize
+		'Rhino.Print "Initialize cell"
+		m_boolIsOpen = True
+	End Sub
+	
+	Private Sub Class_Terminate
+		'Rhino.Print "Terminate cell"
+	End Sub
+	
+	Public Sub Build(strPt, intType)
+		
+		m_intType = intType
+		m_strPt = strPt
+		
+	End Sub
+	
+	Public Sub Connect(arrCells, intRadius)
+		
+		'check arg is valid non-empty array
+		If IsEmpty(arrCells) Or IsNull(arrCells) Then 
+			Rhino.Print "Connect arg, arrCells is empty or null"
+			Exit Sub
+		ElseIf Not IsArray(arrCells) Then
+			Rhino.Print "Connect arg, arrCells is not an array, its a: " + TypeName(arrCells)
+			Exit Sub
+		End If
+		
+		Call FindNeighbors(arrCells, intRadius)
+		'Call PointAtNeighbors()
+		Call GroupNeighbors()
+		Call GroupVonNeumanns()
+		
+	End Sub
+	
+	'find neighbors and create ordered array of pointers---------
+	Private Sub PointAtNeighbors()
+		
+		Dim c, p1, p2
+		
+		'sort neighbors
+		For Each c In m_arrNeighbors
+			
+			'get coordinate of target and point
+			p1=Rhino.PointCoordinates(m_strPt)
+			p2=Rhino.PointCoordinates(c.m_strPt)
+
+			If p2(1) > p1(1) Then 
+				'y is >, its on north
+				Set m_objNorth = c	
+			ElseIf p2(1) < p1(1) Then 
+				'y is <, its on south
+				Set m_objSouth = c	
+			ElseIf p2(0) > p1(0) Then
+				'x is >, its on east
+				Set m_objEast = c
+			ElseIf p2(0) < p1(0) Then
+				'x is <, its on west
+				Set m_objWest = c	
+			ElseIf p2(2) > p1(2) Then
+				'z is >, its on top
+				Set m_objTop = c
+			ElseIf p2(2) < p1(2) Then
+				'z is <, its on bottom
+				Set m_objBottom = c
+			Else
+				Rhino.Print "ignore, same cell"
+			End If
+			
+		Next
+		
+	End Sub
+	
+	'Get points within radius from cell pt--------------------
+	Private Sub FindNeighbors(arrCells, intRadius)
+
+		Dim c, d, i, j, closeCells(), adjacentCells(), p1, p2
+	
+		i=0
+		j=0
+		For Each c In arrCells			
+			'calc distance to cell c
+			p1=Rhino.PointCoordinates(m_strPt)
+			p2=Rhino.PointCoordinates(c.m_strPt)	
+			d=Rhino.Distance(p1,p2)			
+			'if its within radius, its adjacent
+			If d<=(intRadius*1.1) And d>0 Then
+				ReDim Preserve adjacentCells(i)
+				Set adjacentCells(i) = c
+				i=i+1
+			End If
+			'if its within 1.5radius, its close
+			If d<=(intRadius*1.5) And d>0 Then
+				ReDim Preserve closeCells(j)
+				Set closeCells(j) = c
+				j=j+1
+			End If
+		Next
+		
+		'set if any
+		If i>0 Then
+			m_arrVonNeumanns = adjacentCells
+		Else
+			Rhino.Print "no von neumanns"
+			Rhino.ObjectColor m_strPt, RGB(0, 0, 255)
+		End If
+		
+		'set if any
+		If j>0 Then
+			m_arrNeighbors = closeCells
+		Else
+			Rhino.Print "no moores"
+			Rhino.ObjectColor m_strPt, RGB(0, 255, 0)
+		End If
+		
+
+	End Sub
+	
+
+	'Group neighbors by type-----------------------------------
+	Public Sub GroupNeighbors()
+		'Rhino.Print "Grouping Neighbors"
+		
+		Dim type0(), type1(), type2()
+		Dim i, a, b, c
+		a=0
+		b=0
+		c=0
+		
+		For i=0 To Ubound(m_arrNeighbors)
+
+			'group by type
+			Select Case m_arrNeighbors(i).m_intType
+				Case 0
+					ReDim Preserve type0(a)
+					Set type0(a) = m_arrNeighbors(i)
+					a=a+1
+				Case 1	
+					ReDim Preserve type1(b)
+					Set type1(b) = m_arrNeighbors(i)
+					b=b+1
+				Case 2
+					ReDim Preserve type2(c)
+					Set type2(c) = m_arrNeighbors(i)
+					c=c+1
+				Case Else
+					Rhino.Print "GroupNeighbors() found bad cell"
+			End Select
+		Next
+		
+		'copy if smth to copy, else leave empty
+		If a > 0 Then m_arrType0Ms = type0
+		If b > 0 Then m_arrType1Ms = type1
+		If c > 0 Then m_arrType2Ms = type2	
+		
+	End Sub
+	
+	'Group neighbors by type-----------------------------------
+	Public Sub GroupVonNeumanns()
+		On Error Resume Next
+		'Rhino.Print "Grouping Neighbors"
+		
+		Dim type0(), type1(), type2()
+		Dim i, a, b, c
+		a=0
+		b=0
+		c=0
+		
+		If IsNull(m_arrVonNeumanns) Then Exit Sub
+		
+		For i=0 To Ubound(m_arrVonNeumanns)	
+
+			'group by type
+			Select Case m_arrNeighbors(i).m_intType
+				Case 0
+					ReDim Preserve type0(a)
+					Set type0(a) = m_arrVonNeumanns(i)
+					a=a+1
+				Case 1	
+					ReDim Preserve type1(b)
+					Set type1(b) = m_arrVonNeumanns(i)
+					b=b+1
+				Case 2
+					ReDim Preserve type2(c)
+					Set type2(c) = m_arrVonNeumanns(i)
+					c=c+1
+				Case Else
+					Rhino.Print "GroupVonNeumanss() found bad cell"
+			End Select
+		Next
+		
+		'copy if smth to copy, else leave empty
+		If a > 0 Then m_arrType0VNs = type0
+		If b > 0 Then m_arrType1VNs = type1
+		If c > 0 Then m_arrType2VNs = type2	
+		
+	End Sub
+	
+	'color by type---------------------------------------------
+	Public Sub UpdateColor()
+		
+		Dim color
+		
+		'set color var by cell type
+		Select Case m_intType
+			Case 0
+				color = RGB(255, 0, 0)
+			Case 1	
+				color = RGB(0, 255, 0)
+			Case 2
+				color = RGB(0, 0, 255)
+			Case Else
+				color = RGB(255, 255, 255)
+		End Select
+			
+		'set object color
+		Rhino.ObjectColor m_strPt, color	
+	End Sub
+	
+	'apply ruleset---------------------------------------------
+	Public Sub Apply(oRuleSet)
+		
+		Dim newType
+		
+		'calculate new type
+		'newType = oRuleSet.Apply(m_objNorth, m_objSouth, m_objEast, m_objWest, m_objTop, m_objBottom)	
+		newType = oRuleSet.Apply2(m_arrNeighbors)
+		'set new type
+		m_intType = newType
+		
+	End Sub
+	
+	' ---------------------------------------------
+	Public Sub MajorityRuleStep()
+		
+		'count number of a,b,c types within neighbors
+		
+		'set type to that type
+		
+	End Sub
+	
+End Class
+Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version Thursday, February 17, 2011 11:50:25 PM
+
+Class MajorityRule
+	
+
+	Public Function Apply(n,s,e,w,t,b)
+	
+		Dim cells, counts, c, i
+		
+		cells = Array(n,s,e,w,t,b)
+		counts = Array(0,0,0)
+		
+		'count number of each type
+		For Each c In cells
+			Rhino.Print TypeName(c)
+			If Not IsEmpty(c) Then
+				Select Case c.m_intType
+					Case 0
+						counts(0)=counts(0)+1
+					Case 1	
+						counts(1)=counts(1)+1
+					Case 2
+						counts(2)=counts(2)+1
+					Case Else
+					'do nothing
+				End Select
+			Else
+				'is null b/c no cell
+				Rhino.Print "skip " + TypeName(c)
+			End If
+		Next
+		
+		'return most numerous type
+		For i=0 To Ubound(counts)
+			If counts(i) = Max(counts) Then 
+				Apply = i
+			End If
+		Next
+		
+	End Function
+	
+	'This one is better
+	Public Function Apply2(arrCells)
+	
+		Dim cells, counts, c, i, j, maj(), iRand
+		
+		'cells = Array(n,s,e,w,t,b)
+		counts = Array(0,0,0)
+		
+		'count number of each type
+		For Each c In arrCells
+			If Not IsEmpty(c) Then
+				Select Case c.m_intType
+					Case 0
+						counts(0)=counts(0)+1
+					Case 1	
+						counts(1)=counts(1)+1
+					Case 2
+						counts(2)=counts(2)+1
+					Case Else
+					'do nothing
+				End Select
+			Else
+				'is null b/c no cell
+				Rhino.Print "skip " + TypeName(c)
+			End If
+		Next
+		
+		'return most numerous type
+		j=0
+		For i=0 To Ubound(counts)
+			If counts(i) = Max(counts) Then 
+				ReDim Preserve maj(j)
+				maj(j) = i
+				j=j+1
+			End If
+		Next
+		
+		'if tie
+		If(Ubound(maj)>0) Then
+			'get random max
+			iRand=RndInt(0,Ubound(maj))
+			Apply2 = maj(iRand)
+		Else
+			Apply2 = maj(0)
+		End If
+		
+	End Function
+	
+End Class
+Option Explicit
+'Script written by Josh Parker
+'Script copyrighted by OPEN Architecture
+'Script version Tuesday, February 15, 2011 3:25:36 AM
+
+'-------------------------------------------------------
+'SNAKEFARM CLASS
+'
+'
+'-------------------------------------------------------
+Class SnakeFarm
+	
+	Public m_arrSnakes
+	Public m_intSnakeCnt
+	
+	Public Sub FindSnakes(oSubstr, intSize)
+		
+		Dim snakeCells, newSnakes()
+		Dim i, failed, invalid 
+		
+		'check args
+		If IsNull(oSubstr) Then 
+			Rhino.Print "FindSnakes arg, oSubstr is null"
+			Exit Sub
+		ElseIf Not TypeName(oSubstr) = "Substrate" Then
+			Rhino.Print "FindSnakes arg, oSubstr not a Substrate, its a: " + TypeName(oSubstr)
+			Exit Sub
+		End If
+		
+		i=0
+		failed = 0
+		invalid = 0
+		
+		'find snakes
+		Do While failed<500
+			'get next set of cells
+			snakeCells = NextSnake(oSubstr, intSize)
+			'if not invalid or null, make a snake and add to farm
+			If IsNull(snakeCells) Then
+				'found a short snake, increment failed count
+				failed=failed+1
+				Rhino.Print "found short snake, short count: " + CStr(failed)			
+			Else	
+				Rhino.Print "found snake, size: " + CStr(Ubound(snakeCells)+1)
+				ReDim Preserve newSnakes(i)
+				'create new snake
+				Set newSnakes(i) = New Snake
+				'build snake
+				Call newSnakes(i).build(snakeCells)
+				i=i+1
+			End If		
+		Loop
+		
+		If i>0 Then m_arrSnakes = newSnakes
+		
+	End Sub
+	
+	'find snake------------------------------------------
+	Public Function NextSnake(oSubstr, intSize)
+		
+		Dim oRndCell, arrOpenCells, snakeCells(), snakeCells2(), i, n
+		Dim arrBB, strBB, arrVol, strSpine
+	
+		'check for valid args
+		If IsNull(oSubstr) Or IsEmpty(oSubstr) Then 
+			Rhino.Print "NextSnake arg, oSubstr is null or empty"
+			NextSnake = Null
+			Exit Function
+		ElseIf Not IsArray(oSubstr.m_arrType0) Then
+			Rhino.Print "NextSnake arg, oSubstr.m_arrType0 is not an array, its a: " + TypeName(oSubstr.m_arrType0)
+			NextSnake = Null
+			Exit Function
+		End If
+		
+		'get open cells
+		arrOpenCells = OpenCells(oSubstr.m_arrType0)
+		
+		If IsNull(arrOpenCells) Then
+			'found a short snake, break & return null
+			Rhino.Print "no more snakes"
+			NextSnake = Null
+			Exit Function
+		End If
+		
+		'get random cell from open cells
+		Set oRndCell = RndCell(arrOpenCells)
+		
+		'create snake
+		ReDim Preserve snakeCells(0)
+		Set snakeCells(0)=oRndCell
+		snakeCells(0).m_boolIsOpen = False
+		i=1
+		'while snake size is not met
+		Do While i < intSize
+			'if no where for snake to grow, break
+			If IsNull(NextCell(snakeCells(i-1))) Then
+				'found a short snake
+				Rhino.Print "NextSnake call to NextCell() returned null, its just means its a short snake"
+				'release cells and return null and exit
+				ReleaseCells(snakeCells)
+				NextSnake = Null
+				Exit Function 
+			End If
+			
+			'get next cell	
+			Set n = NextCell(snakeCells(i-1))
+			'add to tmp array
+			ReDim Preserve snakeCells(i)
+			Set snakeCells(i) = n
+			'close cell
+			snakeCells(i).m_boolIsOpen = False
+			i=i+1
+		Loop
+		
+		'if snake is 2d, reject it, release cells, and return null
+		If CellsCoplanar(snakeCells) Then
+			Rhino.Print "NextSnake produced 2d snake, reject"
+			'release cells and try again
+			ReleaseCells(snakeCells)
+			'try again recursively
+			NextSnake = NextSnake(oSubstr,intSize)
+			Exit Function
+		End If
+		
+		'return valid snake
+		NextSnake = snakeCells
+		
+	End Function
+	
+	'addSegs----------------------------------------------
+	Public Sub ReleaseCells(arrCells)
+		
+		Dim c
+		
+		'check arg is valid non-empty array
+		If IsEmpty(arrCells) Or IsNull(arrCells) Then 
+			Rhino.Print "ReleaseCells arg, arrCells is empty or null"
+			Exit Sub
+		ElseIf Not IsArray(arrCells) Then
+			Rhino.Print "ReleaseCells arg, arrCells is not an array, its a: " + TypeName(arrCells)
+			Exit Sub
+		End If
+		
+		For Each c In arrCells
+			c.m_boolIsOpen = True
+		Next
+		
+	End Sub
+	
+	'addSegs----------------------------------------------
+	Public Function NextCell(currCell)
+		
+		Dim arrOpenCells
+		
+		'check args
+		If IsNull(currCell) Or IsEmpty(currCell) Then 
+			Rhino.Print "currCell is null or empty"
+			NextCell = Null
+			Exit Function
+		ElseIf Not TypeName(currCell) = "Cell" Then
+			Rhino.Print "currCellis not a Cell, its a: " + TypeName(currCell)
+			NextCell = Null
+			Exit Function
+		End If
+		
+		'check args
+		If IsNull(currCell.m_arrType0VNs) Or IsEmpty(currCell.m_arrType0VNs) Then 
+			Rhino.Print "currCell.m_arrType0VNs is null or empty"
+			NextCell = Null
+			Exit Function
+		ElseIf Not IsArray(currCell.m_arrType0VNs) Then
+			Rhino.Print "currCell.m_arrType0VNs is not an array, its a: " + TypeName(currCell.m_arrType0VNs)
+			NextCell = Null
+			Exit Function
+		End If
+		
+		'get open von neumanns
+		arrOpenCells = OpenCells(currCell.m_arrType0VNs)
+		
+		If Not IsNull(arrOpenCells) Then
+			'pick one at random
+			Set NextCell = RndCell(arrOpenCells)
+		Else
+			Rhino.Print "NextCell found no open von neumanns"
+			NextCell = Null
+		End If
+		
+	End Function
+	
+	'-----------------------------------------------------
+	Public Sub SpineSnakes()
+		
+		Dim snake, strNewSpine
+	
+		For Each snake In m_arrSnakes
+			
+			strNewSpine = StrokeCells(snake.m_arrCells)
+			
+			If Not IsNull(strNewSpine) Then
+				snake.m_strSpine = strNewSpine
+			Else
+				'smth is wrong
+				Rhino.Print "Null Spine, this should never happen"
+				Exit Sub
+			End If
+			
+		Next
+	End Sub
+	
+	'are the cell pts coplanar??
+	Private Function CellsCoplanar(arrCells)
+		
+		Dim i, arr3dPts(), strPt
+		
+		For i=0 To Ubound(arrCells)
+			'get pts
+			ReDim Preserve arr3dPts(i)
+			strPt = arrCells(i).m_strPt
+			arr3dPts(i)=Rhino.PointCoordinates(strPt)		
+		Next
+		
+		'return true if pts are coplanar
+		CellsCoplanar = Rhino.PointsAreCoplanar(arr3dPts, 1)
+		
+	End Function
+	
+	'returns polyline from ordered cell array------------------
+	Private Function StrokeCells(arrCells)
+		
+		Dim i, arr3dPts(), strPt, strShortSpine, strLongSpine
+		
+		For i=0 To Ubound(arrCells)
+			'get pts for next snake
+			ReDim Preserve arr3dPts(i)
+			strPt = arrCells(i).m_strPt
+			arr3dPts(i)=Rhino.PointCoordinates(strPt)
+			'label joints
+			Call Rhino.AddText(CStr(i), arr3dPts(i))		
+		Next
+		
+		'create polyline
+		If Not IsEmpty(arr3dPts) Then
+			'create spine
+			strShortSpine = Rhino.AddPolyline(arr3dPts)
+			'extend curve to accound for snub ends
+			strLongSpine = Rhino.ExtendCurveLength(strShortSpine, 0, 2, 2.5)
+			'assign to snake
+			'm_arrSnakes(i).m_strSpine = strLongSpine
+		Else
+			Rhino.Print "arr3dPts is empty"
+			StrokeCells = Null
+		End If
+		
+		'return polyline
+		StrokeCells = strLongSpine
+		
+	End Function
+	
+	Public Sub SkinSnakes(dblRadius)
+		
+		Dim i, strP0, strP1, arrP0, arrP1
+		Dim arrNorm, arrPlane, arrPlane2, strCirc, arrBB
+		Dim strCrossSect, strSpine, arrSweeps, strSkin
+		
+		For i=0 To Ubound(m_arrSnakes)
+			
+			'get orgin
+			'strP0 = m_arrSnakes(i).m_arrCells(0).m_strPt
+			'strP1 = m_arrSnakes(i).m_arrCells(1).m_strPt
+			'arrP0 = Rhino.PointCoordinates(strP0)
+			'arrP1 = Rhino.PointCoordinates(strP1)
+			'get normal vector
+			'arrNorm = Rhino.VectorCreate (arrP0, arrP1)
+			'create unit plane from normal vector
+			'arrPlane = Rhino.PlaneFromNormal (arrP0, arrNorm)
+			
+			'get spine
+			strSpine = m_arrSnakes(i).m_strSpine
+			'curve frame
+			arrPlane2 = Rhino.CurvePerpFrame(strSpine, -2.45)
+			
+			If Not IsArray(arrPlane2) Then 
+				Rhino.Print TypeName(arrPlane2)
+				Rhino.ObjectColor m_strSpine, RGB(0, 255, 0)
+			End If
+			'add cirlcle
+			strCirc = Rhino.AddCircle (arrPlane2, dblRadius)
+			'get bounding box of circle
+			arrBB = Rhino.BoundingBox(strCirc, arrPlane2)
+			'create crosssection curv
+			strCrossSect = Rhino.AddPolyline(arrBB)
+			'sweep spine
+			arrSweeps = Rhino.AddSweep1(strSpine, strCrossSect)
+			'get skin guid
+			'Rhino.Print "arrSweeps type: " + TypeName(arrSweeps(0))
+			'strSkin = arrSweeps(0)
+			'assine skin to snake
+			'm_arrSnakes(i).m_strSkin = strSkin
+		Next
+	End Sub
+		
+End Class
+
+'-------------------------------------------------------
+'SNAKE CLASS
+'
+'
+'-------------------------------------------------------
+Class Snake
+	
+	Public m_strSpine
+	Public m_strSkin
+	Public m_arrCells
+	Public m_intSegs
+	
+	Public Sub Build(arrCells)
+		
+		Dim i
+		
+		m_arrCells = arrCells
+		m_intSegs = Ubound(arrCells)+1
+		
+		'For i=0 To Ubound(arrCells)
+		'	arrCells(i).m_boolIsOpen = False
+		'Next
+	End Sub
+	
+End Class
+
+'-------------------------------------------------------
+'[SNAKE]SKIN CLASS
+'
+'
+'-------------------------------------------------------
+Class Skin
+	
+	Private arrScales
+	
+End Class
+
+'-------------------------------------------------------
+'[SNAKE]SPINE CLASS
+'
+'
+'-------------------------------------------------------
+Class Spine
+	
+	'order array of pts
+	Private arrCells
+	
+	'render snake method
+	
+End Class
+
+'-------------------------------------------------------
+'[SNAKE]SCALE CLASS
+'
+'
+'-------------------------------------------------------
+Class Scale
+	
+	Private strType
+	Private oSrf
+	'maybe pointers to neighboors (ids)
+	'or shit maybe just reference the obj
+	
+End Class
+Option Explicit
+'Script written by Josh Parker
+'Script copyrighted by OPEN Architecture
+'Script version Tuesday, February 15, 2011 3:25:36 AM
+
+Call Main()
+Sub Main()
+	
+	Dim arrPts, intSteps, intLevels, intSpacing, oMajRule
+	Dim oSubstr, oSnakeFarm
+	
+	'get initial data
+	arrPts=Rhino.GetObjects("select points to populate",1)
+	If Not IsArray(arrPts) Then
+		Rhino.Print "no points selected"
+		Exit Sub
+	End If
+	intSpacing=Rhino.GetInteger("enter cell spacing",5)
+	intSteps=Rhino.GetInteger("enter number of steps",2)	
+	intLevels=Rhino.GetInteger("enter number of levels",2)
+	
+	'create substrate
+	Set oSubstr = New Substrate
+	'substrate "constructor"
+	Call oSubstr.Build(intSpacing, intSteps, intLevels)
+	'add Cells from points
+	Call oSubstr.AddCellsByColor(arrPts)
+	'link each cell to its neighbors
+	Call oSubstr.ConnectCells()
+	'group cells by type
+	Call oSubstr.GroupCells()
+	'color cell pts by cell type
+	Call oSubstr.ColorByType()
+	
+	'create snakes
+	Set oSnakeFarm = New SnakeFarm
+	'locate snakes in substrate
+	Call oSnakeFarm.FindSnakes(oSubstr, 4)
+	'spine the snakes
+	Call oSnakeFarm.SpineSnakes()
+	'skin the snakes
+	Call oSnakeFarm.SkinSnakes((CDbl(intSpacing)/2)*.9)
+	
+	'create massing
+	'Set oMass = New massing
+	'build mass from snake formation
+	'oMass.build(oSnakes)
+	
+	
+End Sub
+Option Explicit
+'Script written by Josh Parker
+'Script copyrighted by OPEN Architecture
+'Script version Tuesday, February 15, 2011 3:25:36 AM
+
+Call Main()
+Sub Main()
+	
+	Dim arrPts, intSteps, intLevels, intSpacing, oMajRule
+	Dim oSubstr, oSnakeFarm
+	
+	'get initial data
+	arrPts=Rhino.GetObjects("select points to populate",1)
+	If Not IsArray(arrPts) Then
+		Rhino.Print "no points selected"
+		Exit Sub
+	End If
+	intSpacing=Rhino.GetInteger("enter cell spacing",5)
+	intSteps=Rhino.GetInteger("enter number of steps",2)	
+	intLevels=Rhino.GetInteger("enter number of levels",2)
+	
+	'create substrate
+	Set oSubstr = New Substrate
+	'substrate "constructor"
+	Call oSubstr.Build(intSpacing, intSteps, intLevels)
+	'add Cells from points
+	Call oSubstr.AddCells(arrPts)
+	'link each cell to its neighbors
+	Call oSubstr.ConnectCells()
+	
+	
+	'create cellular automata obj
+	Set oMajRule = New MajorityRule
+	'apply ruleset to each cell x times
+	Call oSubstr.Apply(oMajRule, 1)
+	'color cell pts by cell type
+	Call oSubstr.ColorByType()
+	
+	'create snakes
+	'Set oSnakeFarm = New SnakeFarm
+	'locate snakes in substrate
+	'Call oSnakeFarm.FindSnakes(oSubstr, 4)
+	'render snakes?
+	'Call oSnakeFarm.RenderSnakes()
+	
+	'create massing
+	'Set oMass = New massing
+	'build mass from snake formation
+	'oMass.build(oSnakes)
+	
+	
+End Sub
+Option Explicit
+'Script written by Josh Parker
+'Script copyrighted by OPEN Architecture
+'Script version Tuesday, February 15, 2011 3:25:36 AM
+
+Class Substrate
+	
+	Public m_arrCells
+	Public m_intSpacing
+	Public m_intSteps
+	Public m_intLevels
+	
+	'subsets
+	Public m_arrType0
+	Public m_arrType1
+	Public m_arrType2
+	
+	Private Sub Class_Initialize
+		'Rhino.Print "Initialize substrate"
+	End Sub
+	
+	Private Sub Class_Terminate
+		'Rhino.Print "Terminate substrate"
+	End Sub
+	
+	'seed substrate-------------------------------------
+	Public Sub Build(intSpacing, intSteps, intLevels)
+		
+		m_intSpacing = intSpacing
+		m_intSteps = intSteps
+		m_intLevels = intLevels	
+		
+	End Sub
+	
+	'create random-type cell array from points-----------
+	Public Sub AddCells(arrPts)
+		Rhino.Print "Adding Cells"
+		
+		Dim newCells(), i
+		
+		If IsNull(arrPts) Then 
+			Rhino.Print "AddCells arg, arrPts, is null"
+			Exit Sub
+		End If
+		
+		For i=0 To Ubound(arrPts)
+			'incr cell array by 1
+			ReDim Preserve newCells(i)
+			'create new cell i
+			Set newCells(i) = New Cell
+			'cell "constructor"
+			newCells(i).Build arrPts(i), RndInt(0,2)
+		Next
+		
+		'"copy" array
+		m_arrCells = newCells
+		
+	End Sub
+	
+	'create random-type cell array from points-----------
+	Public Sub AddCellsByColor(arrPts)
+		Rhino.Print "Adding Cells By color"
+		
+		Dim newCells(), i, intType
+		
+		If IsNull(arrPts) Then 
+			Rhino.Print "AddCells arg, arrPts, is null"
+			Exit Sub
+		End If
+		
+		For i=0 To Ubound(arrPts)
+			'incr cell array by 1
+			ReDim Preserve newCells(i)
+			'create new cell i
+			Set newCells(i) = New Cell
+			'cell "constructor"
+			Call newCells(i).Build(arrPts(i), TypeFromColor(arrPts(i)))
+		Next
+		
+		'"copy" array
+		m_arrCells = newCells
+		
+	End Sub
+	
+	'connect to neighbors----------------------------------
+	Public Sub ConnectCells()
+		Rhino.Print "Connecting Cells"
+		
+		Dim i	
+		For i=0 To Ubound(m_arrCells)
+			Rhino.Print "Connecting Cells " + CStr(i) + " of " + CStr(Ubound(m_arrCells))
+			'connect cell to its neighbors
+			m_arrCells(i).Connect m_arrCells, 5
+		Next
+			
+	End Sub
+	
+	'Group cells by type------------------------------------
+	Public Sub GroupCells()
+		Rhino.Print "Grouping Cells"
+		
+		Dim type0(), type1(), type2()
+		Dim i, a, b, c
+		a=0
+		b=0
+		c=0
+		
+		'Rhino.Print "m_arrCells Type: " + TypeName(m_arrCells)
+		'Rhino.Print "m_arrCells Size: " + CStr(Ubound(m_arrCells))
+		For i=0 To Ubound(m_arrCells)		
+			'group by type
+			'Rhino.Print "Select Type: " + CStr(m_arrCells(i).m_intType)
+			Select Case m_arrCells(i).m_intType
+				Case 0
+					ReDim Preserve type0(a)
+					Set type0(a) = m_arrCells(i)
+					a=a+1
+				Case 1	
+					ReDim Preserve type1(b)
+					Set type1(b) = m_arrCells(i)
+					b=b+1
+				Case 2
+					ReDim Preserve type2(c)
+					Set type2(c) = m_arrCells(i)
+					c=c+1
+				Case Else
+					Rhino.Print "GroupCells() found bad cell"
+			End Select
+		Next
+		
+		'copy if smth to copy, else leave null
+		If a > 0 Then m_arrType0 = type0
+		If b > 0 Then m_arrType1 = type1
+		If c > 0 Then m_arrType2 = type2	
+		
+		'Rhino.Print "m_arrType0: " + CStr(Ubound(m_arrType0))
+		'Rhino.Print "m_arrType1: " + CStr(Ubound(m_arrType1))
+		'Rhino.Print "m_arrType2: " + CStr(Ubound(m_arrType2))
+		
+	End Sub
+	
+	'color substrate by type----------------------------------
+	Public Sub ColorByType()
+		Rhino.Print "Coloring Cells"
+		
+		Dim i, color
+		For i=0 To Ubound(m_arrCells)
+			'color pt by type
+			Call m_arrCells(i).UpdateColor()	
+		Next
+	End Sub
+	
+	'---------------------------------------------------------
+	Public Sub Apply(oRuleSet, intSteps)
+		Rhino.Print "Applying ruleset"
+		
+		Dim i, j, iRand 
+		For j=0 To intSteps
+			'this should be replaced  by random cell picker
+			For i=0 To Ubound(m_arrCells)
+				'get point(string id) at random
+				iRand=RndInt(0,Ubound(m_arrCells))
+				'color pt by type
+				Call m_arrCells(iRand).Apply(oRuleSet)	
+			Next
+			
+		Next
+		
+		'done so regroup cells by type
+		GroupCells()
+		
+	End Sub
+	
+	'------------------------
+	'-----------------SCRAP--
+	'------------------------
+	
+	'return reference to random cell
+	Public Function RndCellold(intType)
+		
+		RndCellold = m_arrCells(RndInt(0, Ubound(m_arrCells)))
+		
+	End Function
+	
+	'return reference to random cell
+	Public Function RndType0old()
+		
+		RndType0old = m_arrType0(RndInt(0, Ubound(m_arrType0)))
+		
+	End Function
+	
+	'return reference to random open type0 cell
+	'this function will eventually have to timeout
+	Public Function RndOpenType0old()
+		
+		Dim c
+		Set c = m_arrType0(RndInt(0, Ubound(m_arrType0)))
+		If c.m_boolIsOpen Then
+			'return c
+			RndOpenType0old = c
+		Else
+			'not found try again
+			RndOpenType0old = RndOpenType0()
+		End If
+			
+	End Function
+	
+End Class
+Option Explicit
+'Script written by Josh Parker
+'Script copyrighted by OPEN Architecture
+'Script version Tuesday, February 15, 2011 3:25:36 AM
+
+Call Main()
+Sub Main()
+	
+	Dim arrPts, intSteps, intLevels, intSpacing, oMajRule
+	Dim oSubstr, oSnakeFarm
+	
+	'get initial data
+	arrPts=Rhino.GetObjects("select points to populate",1)
+	If Not IsArray(arrPts) Then
+		Rhino.Print "no points selected"
+		Exit Sub
+	End If
+	intSpacing=Rhino.GetInteger("enter cell spacing",5)
+	intSteps=Rhino.GetInteger("enter number of steps",2)	
+	intLevels=Rhino.GetInteger("enter number of levels",2)
+	
+	'create substrate
+	Set oSubstr = New Substrate
+	'substrate "constructor"
+	Call oSubstr.Build(intSpacing, intSteps, intLevels)
+	'add Cells from points
+	Call oSubstr.AddCells(arrPts)
+	'link each cell to its neighbors
+	Call oSubstr.ConnectCells()
+	
+	
+	'create cellular automata obj
+	Set oMajRule = New MajorityRule
+	'apply ruleset to each cell x times
+	Call oSubstr.Apply(oMajRule, 1)
+	'color cell pts by cell type
+	Call oSubstr.ColorByType()
+	
+	'create snakes
+	Set oSnakeFarm = New SnakeFarm
+	'locate snakes in substrate
+	Call oSnakeFarm.FindSnakes(oSubstr, 4)
+	'render snakes?
+	Call oSnakeFarm.RenderSnakes()
+	
+	'create massing
+	'Set oMass = New massing
+	'build mass from snake formation
+	'oMass.build(oSnakes)
+	
+	
+End Sub
+Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version Wednesday, February 16, 2011 8:20:37 PM
+
+Function RndInt(lowest, highest)
+	
+	Randomize
+	'RndInt=Int((highest - lowest) * Rnd + lowest)
+	RndInt=Int((highest - lowest + 1) * Rnd + lowest)
+
+End Function
+
+
+'return reference to random open type0 cell
+'this function will eventually have to timeout---------------------------
+Function OpenCells(arrCells)
+	
+	Dim i, j, arrOpenCells()
+	
+	'check arg is valid non-empty array
+	If IsNull(arrCells) Then 
+		Rhino.Print "OpenCells arg is null"
+		OpenCells = Null
+		Exit Function
+	ElseIf Not IsArray(arrCells) Then
+		Rhino.Print "OpenCells arg is not an array, its a: " + TypeName(arrCells)
+		OpenCells = Null
+		Exit Function
+	End If
+			
+	j=0
+	For i=0 To Ubound(arrCells)
+		'if open, add to array
+		If arrCells(i).m_boolIsOpen Then
+			ReDim Preserve arrOpenCells(j)
+			Set arrOpenCells(j) = arrCells(i)
+			j=j+1
+		End If
+	Next
+	
+	'return subsets if any open, else null
+	If j>0 Then
+		'Rhino.Print "OpenCells found some open cells in array"
+		OpenCells = arrOpenCells
+	Else
+		Rhino.Print "OpenCells found no open cells in array"
+		OpenCells = Null
+		Exit Function
+	End If
+			
+End Function
+
+'return reference to random open type0 cell-------------------------
+Function RndCell(arrCells)
+	
+	'check arg is valid non-empty array
+	If IsNull(arrCells) Then 
+		Rhino.Print "RndCell arg is null"
+		RndCell = Null
+		Exit Function
+	ElseIf Not IsArray(arrCells) Then
+		Rhino.Print "RndCell arg is not an array, its a: " + TypeName(arrCells)
+		RndCell = Null
+		Exit Function
+	End If
+	
+	'arg is non-zero sized array to return random value from it
+	Set RndCell = arrCells(RndInt(0, Ubound(arrCells)))
+	
+End Function
+
+'return reference to random open type0 cell-------------------------
+Function TypeFromColor(strPt)
+	
+	Dim c, typ
+	
+	c = Rhino.ObjectColor(strPt)
+	
+	'set color var by cell type
+	Select Case c
+		Case RGB(255, 0, 0)
+			typ = 0
+		Case RGB(0, 255, 0)	
+			typ = 1
+		Case RGB(0, 0, 255)
+			typ = 2
+		Case Else
+			Rhino.Print "pt is not valid color: " + c
+			Exit Function
+	End Select
+	
+	'return type
+	TypeFromColor = typ
+	
+End Function
+
+'------------------------
+'-----------------SCRAP--
+'------------------------
+
+'If you need to repeat a sequence of random numbers, 
+'you should call the Rnd function with a negative 
+'number as an argument immediately prior To using 
+'Randomize With any numeric argument.
+Sub RepeatNumbers()
+	Dim arr(9, 3)
+	Dim loopCtr, intCtr
+	Dim strMsg
+
+	For loopCtr = 0 To 3
+		Rnd -1
+		Randomize(100)
+		For intCtr = 0 To 9
+			strMsg = strMsg & Rnd() & " "
+		Next
+		strMsg = strMsg & vbCrLf
+	Next
+
+	MsgBox strMsg
+End Sub
+
+'return reference to random open type0 cell
+'this function will eventually have to timeout
+Function RndOpenCell(arrCells)
+		
+	Dim c
+	Set c = arrCells(RndInt(0, Ubound(arrCells)))
+	If c.m_boolIsOpen Then
+		'return c
+		RndOpenCell = c
+	Else
+		'not found try again
+		RndOpenCell = RndOpenCell(arrCells)
+	End If
+			
+End Function
+Option Explicit
+'Script written by Josh Parker
+'Script copyrighted by OPEN Architecture
+'Script version Tuesday, February 15, 2011 3:25:36 AM
+
+Class Village
+	
+	Private arrStructure
+	Private arrTrees
+	Private arrGrass
+	Private arrPave
+	
+End Class
+
+Class Snake
+	
+	Private oSpine
+	Private oSkin
+	
+End Class
+
+Class Skin
+	
+	Private arrScales
+	
+End Class
+
+Class Spine
+	
+	'order array of pts
+	Private arrCells
+	
+	'render snake method
+	
+End Class
+
+Class Scale
+	
+	Private strType
+	Private oSrf
+	'maybe pointers to neighboors (ids)
+	'or shit maybe just reference the obj
+	
+End Class

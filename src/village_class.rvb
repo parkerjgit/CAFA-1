@@ -1,0 +1,44 @@
+﻿Option Explicit
+'Script written by Josh Parker
+'Script copyrighted by OPEN Architecture
+'Script version Tuesday, February 15, 2011 3:25:36 AM
+
+Class Village
+	
+	Private arrStructure
+	Private arrTrees
+	Private arrGrass
+	Private arrPave
+	
+End Class
+
+Class Snake
+	
+	Private oSpine
+	Private oSkin
+	
+End Class
+
+Class Skin
+	
+	Private arrScales
+	
+End Class
+
+Class Spine
+	
+	'order array of pts
+	Private arrCells
+	
+	'render snake method
+	
+End Class
+
+Class Scale
+	
+	Private strType
+	Private oSrf
+	'maybe pointers to neighboors (ids)
+	'or shit maybe just reference the obj
+	
+End Class

@@ -1,0 +1,137 @@
+Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version Wednesday, February 16, 2011 8:20:37 PM
+
+Function RndInt(lowest, highest)
+	
+	Randomize
+	'RndInt=Int((highest - lowest) * Rnd + lowest)
+	RndInt = Int((highest - lowest + 1) * Rnd + lowest)
+
+End Function
+
+
+'return reference to random open type0 cell
+'this function will eventually have to timeout---------------------------
+Function OpenCells(arrCells)
+	
+	Dim i, j, arrOpenCells()
+	
+	'check arg is valid non-empty array
+	If IsNull(arrCells) Then 
+		Rhino.Print "OpenCells arg is null"
+		OpenCells = Null
+		Exit Function
+	ElseIf Not IsArray(arrCells) Then
+		Rhino.Print "OpenCells arg is not an array, its a: " + TypeName(arrCells)
+		OpenCells = Null
+		Exit Function
+	End If
+			
+	j = 0
+	For i=0 To Ubound(arrCells)
+		'if open, add to array
+		If arrCells(i).m_boolIsOpen Then
+			ReDim Preserve arrOpenCells(j)
+			Set arrOpenCells(j) = arrCells(i)
+			j = j + 1
+		End If
+	Next
+	
+	'return subsets if any open, else null
+	If j > 0 Then
+		'Rhino.Print "OpenCells found some open cells in array"
+		OpenCells = arrOpenCells
+	Else
+		Rhino.Print "OpenCells found no open cells in array"
+		OpenCells = Null
+		Exit Function
+	End If
+			
+End Function
+
+'return reference to random open type0 cell-------------------------
+Function RndCell(arrCells)
+	
+	'check arg is valid non-empty array
+	If IsNull(arrCells) Then 
+		Rhino.Print "RndCell arg is null"
+		RndCell = Null
+		Exit Function
+	ElseIf Not IsArray(arrCells) Then
+		Rhino.Print "RndCell arg is not an array, its a: " + TypeName(arrCells)
+		RndCell = Null
+		Exit Function
+	End If
+	
+	'arg is non-zero sized array to return random value from it
+	Set RndCell = arrCells(RndInt(0, Ubound(arrCells)))
+	
+End Function
+
+'return reference to random open type0 cell-------------------------
+Function TypeFromColor(strPt)
+	
+	Dim c, typ
+	
+	c = Rhino.ObjectColor(strPt)
+	
+	'set color var by cell type
+	Select Case c
+		Case RGB(255, 0, 0)
+			typ = 0
+		Case RGB(0, 255, 0)	
+			typ = 1
+		Case RGB(0, 0, 255)
+			typ = 2
+		Case Else
+			Rhino.Print "pt is not valid color: " + c
+			Exit Function
+	End Select
+	
+	'return type
+	TypeFromColor = typ
+	
+End Function
+
+'------------------------
+'-----------------SCRAP--
+'------------------------
+
+'If you need to repeat a sequence of random numbers, 
+'you should call the Rnd function with a negative 
+'number as an argument immediately prior To using 
+'Randomize With any numeric argument.
+Sub RepeatNumbers()
+	Dim arr(9, 3)
+	Dim loopCtr, intCtr
+	Dim strMsg
+
+	For loopCtr = 0 To 3
+		Rnd -1
+		Randomize(100)
+		For intCtr = 0 To 9
+			strMsg = strMsg & Rnd() & " "
+		Next
+		strMsg = strMsg & vbCrLf
+	Next
+
+	MsgBox strMsg
+End Sub
+
+'return reference to random open type0 cell
+'this function will eventually have to timeout
+Function RndOpenCell(arrCells)
+		
+	Dim c
+	Set c = arrCells(RndInt(0, Ubound(arrCells)))
+	If c.m_boolIsOpen Then
+		'return c
+		RndOpenCell = c
+	Else
+		'not found try again
+		RndOpenCell = RndOpenCell(arrCells)
+	End If
+			
+End Function

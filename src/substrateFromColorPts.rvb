@@ -1,0 +1,50 @@
+Option Explicit
+'Script written by Josh Parker
+'Script copyrighted by OPEN Architecture
+'Script version Tuesday, February 15, 2011 3:25:36 AM
+
+Call Main()
+Sub Main()
+	
+	Dim arrPts, intSteps, intLevels, intSpacing, oMajRule
+	Dim oSubstr, oSnakeFarm
+	
+	'get initial data
+	arrPts = Rhino.GetObjects("select points to populate", 1)
+	If Not IsArray(arrPts) Then
+		Rhino.Print "no points selected"
+		Exit Sub
+	End If
+	intSpacing = Rhino.GetInteger("enter cell spacing", 5)
+	intSteps = Rhino.GetInteger("enter number of steps", 2)	
+	intLevels = Rhino.GetInteger("enter number of levels", 2)
+	
+	'create substrate
+	Set oSubstr = New Substrate
+	'substrate "constructor"
+	Call oSubstr.Build(intSpacing, intSteps, intLevels)
+	'add Cells from points
+	Call oSubstr.AddCellsByColor(arrPts)
+	'link each cell to its neighbors
+	Call oSubstr.ConnectCells()
+	'group cells by type
+	Call oSubstr.GroupCells()
+	'color cell pts by cell type
+	Call oSubstr.ColorByType()
+	
+	'create snakes
+	Set oSnakeFarm = New SnakeFarm
+	'locate snakes in substrate
+	Call oSnakeFarm.FindSnakes(oSubstr, 4)
+	'spine the snakes
+	Call oSnakeFarm.SpineSnakes()
+	'skin the snakes
+	Call oSnakeFarm.SkinSnakes((CDbl(intSpacing) / 2) * .9)
+	
+	'create massing
+	'Set oMass = New massing
+	'build mass from snake formation
+	'oMass.build(oSnakes)
+	
+	
+End Sub

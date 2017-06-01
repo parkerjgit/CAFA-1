@@ -1,0 +1,367 @@
+Option Explicit
+'Script written by Josh Parker
+'Script copyrighted by OPEN Architecture
+'Script version Tuesday, February 15, 2011 3:25:36 AM
+
+'-------------------------------------------------------
+'SNAKEFARM CLASS
+'
+'
+'-------------------------------------------------------
+Class SnakeFarm
+	
+	Public m_arrSnakes
+	Public m_intSnakeCnt
+	
+	Public Sub FindSnakes(oSubstr, intSize)
+		
+		Dim snakeCells, newSnakes()
+		Dim i, failed, invalid 
+		
+		'check args
+		If IsNull(oSubstr) Then 
+			Rhino.Print "FindSnakes arg, oSubstr is null"
+			Exit Sub
+		ElseIf Not TypeName(oSubstr) = "Substrate" Then
+			Rhino.Print "FindSnakes arg, oSubstr not a Substrate, its a: " + TypeName(oSubstr)
+			Exit Sub
+		End If
+		
+		i = 0
+		failed = 0
+		invalid = 0
+		
+		'find snakes
+		Do While failed < 500
+			'get next set of cells
+			snakeCells = NextSnake(oSubstr, intSize)
+			'if not invalid or null, make a snake and add to farm
+			If IsNull(snakeCells) Then
+				'found a short snake, increment failed count
+				failed = failed + 1
+				Rhino.Print "found short snake, short count: " + CStr(failed)			
+			Else	
+				Rhino.Print "found snake, size: " + CStr(Ubound(snakeCells) + 1)
+				ReDim Preserve newSnakes(i)
+				'create new snake
+				Set newSnakes(i) = New Snake
+				'build snake
+				Call newSnakes(i).build(snakeCells)
+				i = i + 1
+			End If		
+		Loop
+		
+		If i > 0 Then m_arrSnakes = newSnakes
+		
+	End Sub
+	
+	'find snake------------------------------------------
+	Public Function NextSnake(oSubstr, intSize)
+		
+		Dim oRndCell, arrOpenCells, snakeCells(), snakeCells2(), i, n
+		Dim arrBB, strBB, arrVol, strSpine
+	
+		'check for valid args
+		If IsNull(oSubstr) Or IsEmpty(oSubstr) Then 
+			Rhino.Print "NextSnake arg, oSubstr is null or empty"
+			NextSnake = Null
+			Exit Function
+		ElseIf Not IsArray(oSubstr.m_arrType0) Then
+			Rhino.Print "NextSnake arg, oSubstr.m_arrType0 is not an array, its a: " + TypeName(oSubstr.m_arrType0)
+			NextSnake = Null
+			Exit Function
+		End If
+		
+		'get open cells
+		arrOpenCells = OpenCells(oSubstr.m_arrType0)
+		
+		If IsNull(arrOpenCells) Then
+			'found a short snake, break & return null
+			Rhino.Print "no more snakes"
+			NextSnake = Null
+			Exit Function
+		End If
+		
+		'get random cell from open cells
+		Set oRndCell = RndCell(arrOpenCells)
+		
+		'create snake
+		ReDim Preserve snakeCells(0)
+		Set snakeCells(0) = oRndCell
+		snakeCells(0).m_boolIsOpen = False
+		i = 1
+		'while snake size is not met
+		Do While i < intSize
+			'if no where for snake to grow, break
+			If IsNull(NextCell(snakeCells(i - 1))) Then
+				'found a short snake
+				Rhino.Print "NextSnake call to NextCell() returned null, its just means its a short snake"
+				'release cells and return null and exit
+				ReleaseCells(snakeCells)
+				NextSnake = Null
+				Exit Function 
+			End If
+			
+			'get next cell	
+			Set n = NextCell(snakeCells(i - 1))
+			'add to tmp array
+			ReDim Preserve snakeCells(i)
+			Set snakeCells(i) = n
+			'close cell
+			snakeCells(i).m_boolIsOpen = False
+			i = i + 1
+		Loop
+		
+		'if snake is 2d, reject it, release cells, and return null
+		If CellsCoplanar(snakeCells) Then
+			Rhino.Print "NextSnake produced 2d snake, reject"
+			'release cells and try again
+			ReleaseCells(snakeCells)
+			'try again recursively
+			NextSnake = NextSnake(oSubstr, intSize)
+			Exit Function
+		End If
+		
+		'return valid snake
+		NextSnake = snakeCells
+		
+	End Function
+	
+	'addSegs----------------------------------------------
+	Public Sub ReleaseCells(arrCells)
+		
+		Dim c
+		
+		'check arg is valid non-empty array
+		If IsEmpty(arrCells) Or IsNull(arrCells) Then 
+			Rhino.Print "ReleaseCells arg, arrCells is empty or null"
+			Exit Sub
+		ElseIf Not IsArray(arrCells) Then
+			Rhino.Print "ReleaseCells arg, arrCells is not an array, its a: " + TypeName(arrCells)
+			Exit Sub
+		End If
+		
+		For Each c In arrCells
+			c.m_boolIsOpen = True
+		Next
+		
+	End Sub
+	
+	'addSegs----------------------------------------------
+	Public Function NextCell(currCell)
+		
+		Dim arrOpenCells
+		
+		'check args
+		If IsNull(currCell) Or IsEmpty(currCell) Then 
+			Rhino.Print "currCell is null or empty"
+			NextCell = Null
+			Exit Function
+		ElseIf Not TypeName(currCell) = "Cell" Then
+			Rhino.Print "currCellis not a Cell, its a: " + TypeName(currCell)
+			NextCell = Null
+			Exit Function
+		End If
+		
+		'check args
+		If IsNull(currCell.m_arrType0VNs) Or IsEmpty(currCell.m_arrType0VNs) Then 
+			Rhino.Print "currCell.m_arrType0VNs is null or empty"
+			NextCell = Null
+			Exit Function
+		ElseIf Not IsArray(currCell.m_arrType0VNs) Then
+			Rhino.Print "currCell.m_arrType0VNs is not an array, its a: " + TypeName(currCell.m_arrType0VNs)
+			NextCell = Null
+			Exit Function
+		End If
+		
+		'get open von neumanns
+		arrOpenCells = OpenCells(currCell.m_arrType0VNs)
+		
+		If Not IsNull(arrOpenCells) Then
+			'pick one at random
+			Set NextCell = RndCell(arrOpenCells)
+		Else
+			Rhino.Print "NextCell found no open von neumanns"
+			NextCell = Null
+		End If
+		
+	End Function
+	
+	'-----------------------------------------------------
+	Public Sub SpineSnakes()
+		
+		Dim snake, strNewSpine
+	
+		For Each snake In m_arrSnakes
+			
+			strNewSpine = StrokeCells(snake.m_arrCells)
+			
+			If Not IsNull(strNewSpine) Then
+				snake.m_strSpine = strNewSpine
+			Else
+				'smth is wrong
+				Rhino.Print "Null Spine, this should never happen"
+				Exit Sub
+			End If
+			
+		Next
+	End Sub
+	
+	'are the cell pts coplanar??
+	Private Function CellsCoplanar(arrCells)
+		
+		Dim i, arr3dPts(), strPt
+		
+		For i=0 To Ubound(arrCells)
+			'get pts
+			ReDim Preserve arr3dPts(i)
+			strPt = arrCells(i).m_strPt
+			arr3dPts(i) = Rhino.PointCoordinates(strPt)		
+		Next
+		
+		'return true if pts are coplanar
+		CellsCoplanar = Rhino.PointsAreCoplanar(arr3dPts, 1)
+		
+	End Function
+	
+	'returns polyline from ordered cell array------------------
+	Private Function StrokeCells(arrCells)
+		
+		Dim i, arr3dPts(), strPt, strShortSpine, strLongSpine
+		
+		For i=0 To Ubound(arrCells)
+			'get pts for next snake
+			ReDim Preserve arr3dPts(i)
+			strPt = arrCells(i).m_strPt
+			arr3dPts(i) = Rhino.PointCoordinates(strPt)
+			'label joints
+			Call Rhino.AddText(CStr(i), arr3dPts(i))		
+		Next
+		
+		'create polyline
+		If Not IsEmpty(arr3dPts) Then
+			'create spine
+			strShortSpine = Rhino.AddPolyline(arr3dPts)
+			'extend curve to accound for snub ends
+			strLongSpine = Rhino.ExtendCurveLength(strShortSpine, 0, 2, 2.5)
+			'assign to snake
+			'm_arrSnakes(i).m_strSpine = strLongSpine
+		Else
+			Rhino.Print "arr3dPts is empty"
+			StrokeCells = Null
+		End If
+		
+		'return polyline
+		StrokeCells = strLongSpine
+		
+	End Function
+	
+	Public Sub SkinSnakes(dblRadius)
+		
+		Dim i, strP0, strP1, arrP0, arrP1
+		Dim arrNorm, arrPlane, arrPlane2, strCirc, arrBB
+		Dim strCrossSect, strSpine, arrSweeps, strSkin
+		
+		For i=0 To Ubound(m_arrSnakes)
+			
+			'get orgin
+			'strP0 = m_arrSnakes(i).m_arrCells(0).m_strPt
+			'strP1 = m_arrSnakes(i).m_arrCells(1).m_strPt
+			'arrP0 = Rhino.PointCoordinates(strP0)
+			'arrP1 = Rhino.PointCoordinates(strP1)
+			'get normal vector
+			'arrNorm = Rhino.VectorCreate (arrP0, arrP1)
+			'create unit plane from normal vector
+			'arrPlane = Rhino.PlaneFromNormal (arrP0, arrNorm)
+			
+			'get spine
+			strSpine = m_arrSnakes(i).m_strSpine
+			'curve frame
+			arrPlane2 = Rhino.CurvePerpFrame(strSpine, -2.45)
+			
+			If Not IsArray(arrPlane2) Then 
+				Rhino.Print TypeName(arrPlane2)
+				Rhino.ObjectColor m_strSpine, RGB(0, 255, 0)
+			End If
+			'add cirlcle
+			strCirc = Rhino.AddCircle(arrPlane2, dblRadius)
+			'get bounding box of circle
+			arrBB = Rhino.BoundingBox(strCirc, arrPlane2)
+			'create crosssection curv
+			strCrossSect = Rhino.AddPolyline(arrBB)
+			'sweep spine
+			arrSweeps = Rhino.AddSweep1(strSpine, strCrossSect)
+			'get skin guid
+			'Rhino.Print "arrSweeps type: " + TypeName(arrSweeps(0))
+			'strSkin = arrSweeps(0)
+			'assine skin to snake
+			'm_arrSnakes(i).m_strSkin = strSkin
+		Next
+	End Sub
+		
+End Class
+
+'-------------------------------------------------------
+'SNAKE CLASS
+'
+'
+'-------------------------------------------------------
+Class Snake
+	
+	Public m_strSpine
+	Public m_strSkin
+	Public m_arrCells
+	Public m_intSegs
+	
+	Public Sub Build(arrCells)
+		
+		Dim i
+		
+		m_arrCells = arrCells
+		m_intSegs = Ubound(arrCells) + 1
+		
+		'For i=0 To Ubound(arrCells)
+		'	arrCells(i).m_boolIsOpen = False
+		'Next
+	End Sub
+	
+End Class
+
+'-------------------------------------------------------
+'[SNAKE]SKIN CLASS
+'
+'
+'-------------------------------------------------------
+Class Skin
+	
+	Private arrScales
+	
+End Class
+
+'-------------------------------------------------------
+'[SNAKE]SPINE CLASS
+'
+'
+'-------------------------------------------------------
+Class Spine
+	
+	'order array of pts
+	Private arrCells
+	
+	'render snake method
+	
+End Class
+
+'-------------------------------------------------------
+'[SNAKE]SCALE CLASS
+'
+'
+'-------------------------------------------------------
+Class Scale
+	
+	Private strType
+	Private oSrf
+	'maybe pointers to neighboors (ids)
+	'or shit maybe just reference the obj
+	
+End Class

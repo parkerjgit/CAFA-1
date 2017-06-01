@@ -1,0 +1,93 @@
+﻿Option Explicit
+'Script written by <insert name>
+'Script copyrighted by <insert company name>
+'Script version Thursday, February 17, 2011 11:50:25 PM
+
+Class MajorityRule
+	
+
+	Public Function Apply(n,s,e,w,t,b)
+	
+		Dim cells, counts, c, i
+		
+		cells = Array(n,s,e,w,t,b)
+		counts = Array(0,0,0)
+		
+		'count number of each type
+		For Each c In cells
+			Rhino.Print TypeName(c)
+			If Not IsEmpty(c) Then
+				Select Case c.m_intType
+					Case 0
+						counts(0)=counts(0)+1
+					Case 1	
+						counts(1)=counts(1)+1
+					Case 2
+						counts(2)=counts(2)+1
+					Case Else
+					'do nothing
+				End Select
+			Else
+				'is null b/c no cell
+				Rhino.Print "skip " + TypeName(c)
+			End If
+		Next
+		
+		'return most numerous type
+		For i=0 To Ubound(counts)
+			If counts(i) = Max(counts) Then 
+				Apply = i
+			End If
+		Next
+		
+	End Function
+	
+	'This one is better
+	Public Function Apply2(arrCells)
+	
+		Dim cells, counts, c, i, j, maj(), iRand
+		
+		'cells = Array(n,s,e,w,t,b)
+		counts = Array(0,0,0)
+		
+		'count number of each type
+		For Each c In arrCells
+			If Not IsEmpty(c) Then
+				Select Case c.m_intType
+					Case 0
+						counts(0)=counts(0)+1
+					Case 1	
+						counts(1)=counts(1)+1
+					Case 2
+						counts(2)=counts(2)+1
+					Case Else
+					'do nothing
+				End Select
+			Else
+				'is null b/c no cell
+				Rhino.Print "skip " + TypeName(c)
+			End If
+		Next
+		
+		'return most numerous type
+		j=0
+		For i=0 To Ubound(counts)
+			If counts(i) = Max(counts) Then 
+				ReDim Preserve maj(j)
+				maj(j) = i
+				j=j+1
+			End If
+		Next
+		
+		'if tie
+		If(Ubound(maj)>0) Then
+			'get random max
+			iRand=RndInt(0,Ubound(maj))
+			Apply2 = maj(iRand)
+		Else
+			Apply2 = maj(0)
+		End If
+		
+	End Function
+	
+End Class

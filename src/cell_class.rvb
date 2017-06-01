@@ -1,0 +1,277 @@
+Option Explicit
+'Script written by Josh Parker
+'Script copyrighted by OPEN Architecture
+'Script version Tuesday, February 15, 2011 3:25:36 AM
+
+Class Cell
+	
+	Public m_intType
+	Public m_strPt
+	
+	'array of neighbors
+	Public m_arrNeighbors
+	Public m_arrVonNeumanns
+	
+	'moore subsets
+	Public m_arrType0Ms
+	Public m_arrType1Ms
+	Public m_arrType2Ms
+	
+	'vonneumann subsets
+	Public m_arrType0VNs
+	Public m_arrType1VNs
+	Public m_arrType2VNs
+	
+	'neighbor pointers
+	Public m_objNorth
+	Public m_objSouth
+	Public m_objEast
+	Public m_objWest
+	Public m_objTop
+	Public m_objBottom
+	
+	'is cell part of snake
+	Public m_boolIsOpen
+	
+	
+	Private Sub Class_Initialize
+		'Rhino.Print "Initialize cell"
+		m_boolIsOpen = True
+	End Sub
+	
+	Private Sub Class_Terminate
+		'Rhino.Print "Terminate cell"
+	End Sub
+	
+	Public Sub Build(strPt, intType)
+		
+		m_intType = intType
+		m_strPt = strPt
+		
+	End Sub
+	
+	Public Sub Connect(arrCells, intRadius)
+		
+		'check arg is valid non-empty array
+		If IsEmpty(arrCells) Or IsNull(arrCells) Then 
+			Rhino.Print "Connect arg, arrCells is empty or null"
+			Exit Sub
+		ElseIf Not IsArray(arrCells) Then
+			Rhino.Print "Connect arg, arrCells is not an array, its a: " + TypeName(arrCells)
+			Exit Sub
+		End If
+		
+		Call FindNeighbors(arrCells, intRadius)
+		'Call PointAtNeighbors()
+		Call GroupNeighbors()
+		Call GroupVonNeumanns()
+		
+	End Sub
+	
+	'find neighbors and create ordered array of pointers---------
+	Private Sub PointAtNeighbors()
+		
+		Dim c, p1, p2
+		
+		'sort neighbors
+		For Each c In m_arrNeighbors
+			
+			'get coordinate of target and point
+			p1 = Rhino.PointCoordinates(m_strPt)
+			p2 = Rhino.PointCoordinates(c.m_strPt)
+
+			If p2(1) > p1(1) Then 
+				'y is >, its on north
+				Set m_objNorth = c	
+			ElseIf p2(1) < p1(1) Then 
+				'y is <, its on south
+				Set m_objSouth = c	
+			ElseIf p2(0) > p1(0) Then
+				'x is >, its on east
+				Set m_objEast = c
+			ElseIf p2(0) < p1(0) Then
+				'x is <, its on west
+				Set m_objWest = c	
+			ElseIf p2(2) > p1(2) Then
+				'z is >, its on top
+				Set m_objTop = c
+			ElseIf p2(2) < p1(2) Then
+				'z is <, its on bottom
+				Set m_objBottom = c
+			Else
+				Rhino.Print "ignore, same cell"
+			End If
+			
+		Next
+		
+	End Sub
+	
+	'Get points within radius from cell pt--------------------
+	Private Sub FindNeighbors(arrCells, intRadius)
+
+		Dim c, d, i, j, closeCells(), adjacentCells(), p1, p2
+	
+		i = 0
+		j = 0
+		For Each c In arrCells			
+			'calc distance to cell c
+			p1 = Rhino.PointCoordinates(m_strPt)
+			p2 = Rhino.PointCoordinates(c.m_strPt)	
+			d = Rhino.Distance(p1, p2)			
+			'if its within radius, its adjacent
+			If d <= (intRadius * 1.1) And d > 0 Then
+				ReDim Preserve adjacentCells(i)
+				Set adjacentCells(i) = c
+				i = i + 1
+			End If
+			'if its within 1.5radius, its close
+			If d <= (intRadius * 1.5) And d > 0 Then
+				ReDim Preserve closeCells(j)
+				Set closeCells(j) = c
+				j = j + 1
+			End If
+		Next
+		
+		'set if any
+		If i > 0 Then
+			m_arrVonNeumanns = adjacentCells
+		Else
+			Rhino.Print "no von neumanns"
+			Rhino.ObjectColor m_strPt, RGB(0, 0, 255)
+		End If
+		
+		'set if any
+		If j > 0 Then
+			m_arrNeighbors = closeCells
+		Else
+			Rhino.Print "no moores"
+			Rhino.ObjectColor m_strPt, RGB(0, 255, 0)
+		End If
+		
+
+	End Sub
+	
+
+	'Group neighbors by type-----------------------------------
+	Public Sub GroupNeighbors()
+		'Rhino.Print "Grouping Neighbors"
+		
+		Dim type0(), type1(), type2()
+		Dim i, a, b, c
+		a = 0
+		b = 0
+		c = 0
+		
+		For i=0 To Ubound(m_arrNeighbors)
+
+			'group by type
+			Select Case m_arrNeighbors(i).m_intType
+				Case 0
+					ReDim Preserve type0(a)
+					Set type0(a) = m_arrNeighbors(i)
+					a = a + 1
+				Case 1	
+					ReDim Preserve type1(b)
+					Set type1(b) = m_arrNeighbors(i)
+					b = b + 1
+				Case 2
+					ReDim Preserve type2(c)
+					Set type2(c) = m_arrNeighbors(i)
+					c = c + 1
+				Case Else
+					Rhino.Print "GroupNeighbors() found bad cell"
+			End Select
+		Next
+		
+		'copy if smth to copy, else leave empty
+		If a > 0 Then m_arrType0Ms = type0
+		If b > 0 Then m_arrType1Ms = type1
+		If c > 0 Then m_arrType2Ms = type2	
+		
+	End Sub
+	
+	'Group neighbors by type-----------------------------------
+	Public Sub GroupVonNeumanns()
+		On Error Resume Next
+		'Rhino.Print "Grouping Neighbors"
+		
+		Dim type0(), type1(), type2()
+		Dim i, a, b, c
+		a = 0
+		b = 0
+		c = 0
+		
+		If IsNull(m_arrVonNeumanns) Then Exit Sub
+		
+		For i=0 To Ubound(m_arrVonNeumanns)	
+
+			'group by type
+			Select Case m_arrNeighbors(i).m_intType
+				Case 0
+					ReDim Preserve type0(a)
+					Set type0(a) = m_arrVonNeumanns(i)
+					a = a + 1
+				Case 1	
+					ReDim Preserve type1(b)
+					Set type1(b) = m_arrVonNeumanns(i)
+					b = b + 1
+				Case 2
+					ReDim Preserve type2(c)
+					Set type2(c) = m_arrVonNeumanns(i)
+					c = c + 1
+				Case Else
+					Rhino.Print "GroupVonNeumanss() found bad cell"
+			End Select
+		Next
+		
+		'copy if smth to copy, else leave empty
+		If a > 0 Then m_arrType0VNs = type0
+		If b > 0 Then m_arrType1VNs = type1
+		If c > 0 Then m_arrType2VNs = type2	
+		
+	End Sub
+	
+	'color by type---------------------------------------------
+	Public Sub UpdateColor()
+		
+		Dim color
+		
+		'set color var by cell type
+		Select Case m_intType
+			Case 0
+				color = RGB(255, 0, 0)
+			Case 1	
+				color = RGB(0, 255, 0)
+			Case 2
+				color = RGB(0, 0, 255)
+			Case Else
+				color = RGB(255, 255, 255)
+		End Select
+			
+		'set object color
+		Rhino.ObjectColor m_strPt, color	
+	End Sub
+	
+	'apply ruleset---------------------------------------------
+	Public Sub Apply(oRuleSet)
+		
+		Dim newType
+		
+		'calculate new type
+		'newType = oRuleSet.Apply(m_objNorth, m_objSouth, m_objEast, m_objWest, m_objTop, m_objBottom)	
+		newType = oRuleSet.Apply2(m_arrNeighbors)
+		'set new type
+		m_intType = newType
+		
+	End Sub
+	
+	' ---------------------------------------------
+	Public Sub MajorityRuleStep()
+		
+		'count number of a,b,c types within neighbors
+		
+		'set type to that type
+		
+	End Sub
+	
+End Class

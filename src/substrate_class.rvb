@@ -1,0 +1,208 @@
+Option Explicit
+'Script written by Josh Parker
+'Script copyrighted by OPEN Architecture
+'Script version Tuesday, February 15, 2011 3:25:36 AM
+
+Class Substrate
+	
+	Public m_arrCells
+	Public m_intSpacing
+	Public m_intSteps
+	Public m_intLevels
+	
+	'subsets
+	Public m_arrType0
+	Public m_arrType1
+	Public m_arrType2
+	
+	Private Sub Class_Initialize
+		'Rhino.Print "Initialize substrate"
+	End Sub
+	
+	Private Sub Class_Terminate
+		'Rhino.Print "Terminate substrate"
+	End Sub
+	
+	'seed substrate-------------------------------------
+	Public Sub Build(intSpacing, intSteps, intLevels)
+		
+		m_intSpacing = intSpacing
+		m_intSteps = intSteps
+		m_intLevels = intLevels	
+		
+	End Sub
+	
+	'create random-type cell array from points-----------
+	Public Sub AddCells(arrPts)
+		Rhino.Print "Adding Cells"
+		
+		Dim newCells(), i
+		
+		If IsNull(arrPts) Then 
+			Rhino.Print "AddCells arg, arrPts, is null"
+			Exit Sub
+		End If
+		
+		For i=0 To Ubound(arrPts)
+			'incr cell array by 1
+			ReDim Preserve newCells(i)
+			'create new cell i
+			Set newCells(i) = New Cell
+			'cell "constructor"
+			newCells(i).Build arrPts(i), RndInt(0, 2)
+		Next
+		
+		'"copy" array
+		m_arrCells = newCells
+		
+	End Sub
+	
+	'create random-type cell array from points-----------
+	Public Sub AddCellsByColor(arrPts)
+		Rhino.Print "Adding Cells By color"
+		
+		Dim newCells(), i, intType
+		
+		If IsNull(arrPts) Then 
+			Rhino.Print "AddCells arg, arrPts, is null"
+			Exit Sub
+		End If
+		
+		For i=0 To Ubound(arrPts)
+			'incr cell array by 1
+			ReDim Preserve newCells(i)
+			'create new cell i
+			Set newCells(i) = New Cell
+			'cell "constructor"
+			Call newCells(i).Build(arrPts(i), TypeFromColor(arrPts(i)))
+		Next
+		
+		'"copy" array
+		m_arrCells = newCells
+		
+	End Sub
+	
+	'connect to neighbors----------------------------------
+	Public Sub ConnectCells()
+		Rhino.Print "Connecting Cells"
+		
+		Dim i	
+		For i=0 To Ubound(m_arrCells)
+			Rhino.Print "Connecting Cells " + CStr(i) + " of " + CStr(Ubound(m_arrCells))
+			'connect cell to its neighbors
+			m_arrCells(i).Connect m_arrCells, 5
+		Next
+			
+	End Sub
+	
+	'Group cells by type------------------------------------
+	Public Sub GroupCells()
+		Rhino.Print "Grouping Cells"
+		
+		Dim type0(), type1(), type2()
+		Dim i, a, b, c
+		a = 0
+		b = 0
+		c = 0
+		
+		'Rhino.Print "m_arrCells Type: " + TypeName(m_arrCells)
+		'Rhino.Print "m_arrCells Size: " + CStr(Ubound(m_arrCells))
+		For i=0 To Ubound(m_arrCells)		
+			'group by type
+			'Rhino.Print "Select Type: " + CStr(m_arrCells(i).m_intType)
+			Select Case m_arrCells(i).m_intType
+				Case 0
+					ReDim Preserve type0(a)
+					Set type0(a) = m_arrCells(i)
+					a = a + 1
+				Case 1	
+					ReDim Preserve type1(b)
+					Set type1(b) = m_arrCells(i)
+					b = b + 1
+				Case 2
+					ReDim Preserve type2(c)
+					Set type2(c) = m_arrCells(i)
+					c = c + 1
+				Case Else
+					Rhino.Print "GroupCells() found bad cell"
+			End Select
+		Next
+		
+		'copy if smth to copy, else leave null
+		If a > 0 Then m_arrType0 = type0
+		If b > 0 Then m_arrType1 = type1
+		If c > 0 Then m_arrType2 = type2	
+		
+		'Rhino.Print "m_arrType0: " + CStr(Ubound(m_arrType0))
+		'Rhino.Print "m_arrType1: " + CStr(Ubound(m_arrType1))
+		'Rhino.Print "m_arrType2: " + CStr(Ubound(m_arrType2))
+		
+	End Sub
+	
+	'color substrate by type----------------------------------
+	Public Sub ColorByType()
+		Rhino.Print "Coloring Cells"
+		
+		Dim i, color
+		For i=0 To Ubound(m_arrCells)
+			'color pt by type
+			Call m_arrCells(i).UpdateColor()	
+		Next
+	End Sub
+	
+	'---------------------------------------------------------
+	Public Sub Apply(oRuleSet, intSteps)
+		Rhino.Print "Applying ruleset"
+		
+		Dim i, j, iRand 
+		For j=0 To intSteps
+			'this should be replaced  by random cell picker
+			For i=0 To Ubound(m_arrCells)
+				'get point(string id) at random
+				iRand = RndInt(0, Ubound(m_arrCells))
+				'color pt by type
+				Call m_arrCells(iRand).Apply(oRuleSet)	
+			Next
+			
+		Next
+		
+		'done so regroup cells by type
+		GroupCells()
+		
+	End Sub
+	
+	'------------------------
+	'-----------------SCRAP--
+	'------------------------
+	
+	'return reference to random cell
+	Public Function RndCellold(intType)
+		
+		RndCellold = m_arrCells(RndInt(0, Ubound(m_arrCells)))
+		
+	End Function
+	
+	'return reference to random cell
+	Public Function RndType0old()
+		
+		RndType0old = m_arrType0(RndInt(0, Ubound(m_arrType0)))
+		
+	End Function
+	
+	'return reference to random open type0 cell
+	'this function will eventually have to timeout
+	Public Function RndOpenType0old()
+		
+		Dim c
+		Set c = m_arrType0(RndInt(0, Ubound(m_arrType0)))
+		If c.m_boolIsOpen Then
+			'return c
+			RndOpenType0old = c
+		Else
+			'not found try again
+			RndOpenType0old = RndOpenType0()
+		End If
+			
+	End Function
+	
+End Class
